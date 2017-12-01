@@ -1,3 +1,4 @@
+#include <CircularBuffer.h> // ring buffer
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
 #include <FirebaseArduino.h> 
@@ -31,6 +32,14 @@ float lastShake = 0;
 float lastZ = 1;
 float accelZDelta = 0;
 
+// custom vars for magnetometer
+float lastMagX = 0; //in Gauss
+float lastMagY = 0;
+float lastMagZ = 0;
+CircularBuffer<float,100> magReadX; // the derivative or change in last 100 reads (last second)
+CircularBuffer<float,100> magReadY;
+CircularBuffer<float,100> magReadZ;
+
 // http://www.ngdc.noaa.gov/geomag-web/#declination
 #define DECLINATION -8.58 // Declination (degrees) in Boulder, CO.
 
@@ -41,13 +50,13 @@ int brightness = 0;    // how bright the LED is
 int fadeAmount = 100;    // how many points to fade the LED by
 
 /* Neopixel LEDs */
- led_pin = 6;
+int led_pin = 6;
  // Parameter 3 = pixel type flags, add together as needed: // TODO: which one 
 //   NEO_KHZ800  800 KHz bitstream (most NeoPixel products w/WS2812 LEDs)
 //   NEO_KHZ400  400 KHz (classic 'v1' (not v2) FLORA pixels, WS2811 drivers)
 //   NEO_GRB     Pixels are wired for GRB bitstream (most NeoPixel products)
 //   NEO_RGB     Pixels are wired for RGB bitstream (v1 FLORA pixels, not v2)
- Adafruit_NeoPixel strip = Adafruit_NeoPixel(2, led_pin, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(2, led_pin, NEO_GRB + NEO_KHZ800);
 
 // initial pattern
 int pattern = 0; // enum, 0 --> start/neutral, 1 --> fade, 2 --> blink
@@ -95,39 +104,39 @@ void setup() {
  Firebase.begin(FIREBASE_HOST, FIREBASE_AUTH);
 
  // run below only if the mac is not already on firebase 
-// Firebase.set(mac + "/pattern", 0); 
-// Firebase.set(mac + "/brightness", brightness_init);
-// Firebase.set(mac + "/active", 1); // turn on initally
+ Firebase.set("object/" + mac + "/pattern", 0); 
+ Firebase.set("object/" + mac + "/brightness", brightness_init);
+ Firebase.set("object/" + mac + "/active", 1); // turn on initally
 
  /** IMU Setup **/
  imu.settings.device.commInterface = IMU_MODE_I2C;
  imu.settings.device.mAddress = LSM9DS1_M;
  imu.settings.device.agAddress = LSM9DS1_AG;
-// while (!imu.begin()) // commented out for non-imu demo
-// {
-//    Serial.println("Failed to communicate with LSM9DS1.");
-//    delay(100);
-// }
+ while (!imu.begin()) // commented out for non-imu demo
+ {
+    Serial.println("Failed to communicate with LSM9DS1.");
+    delay(100);
+ }
  /* Neopixel LED Setup */
-  strip.begin();
-  strip.show(); // Initialize all pixels to 'off'
- strip.setPixelColor(0, 0, 0, 0, 255); // white to 255 for led 0 
- strip.setPixelColor(1, 0, 0, 0, 255); // white to 255 for led 1
+//  strip.begin();
+//  strip.show(); // Initialize all pixels to 'off'
+// strip.setPixelColor(0, 0, 0, 0, 255); // white to 255 for led 0 
+// strip.setPixelColor(1, 0, 0, 0, 255); // white to 255 for led 1
 }
 
 void loop() {
  /** Deep Sleep Timeout **/
  // TODO: confirm if we need a deepsleep here based on power consumption, if we do how much time & when? 
-   int active = Firebase.getInt(mac + "/active");
+   int active = Firebase.getInt("object/" +mac + "/active");
  if (loop_iter > 600 || (loop_iter == 0 && !active) ){ // 60 seconds of inactivity or just woke up and nothing happened
     ESP.deepSleep(30e6); // sleep for 30 seconds in deep sleep
 }
 
  /** Set Light Pattern **/
  // Read and set pattern from Firebase
- pattern = Firebase.getInt(mac+ "/pattern");
+ pattern = Firebase.getInt("object/" +mac+ "/pattern");
  if (pattern == 0){ // manual control
-    brightness = Firebase.getInt(mac + "/brightness");
+    brightness = Firebase.getInt("object/" +mac + "/brightness");
  } 
  else if (pattern == 1){ // fade
     brightness = brightness + fadeAmount;
@@ -141,8 +150,8 @@ void loop() {
  }
  // set the brightness of led:
  analogWrite(led, brightness);
- strip.setBrightness(brightness);
- strip.show();
+// strip.setBrightness(brightness);
+// strip.show();
 
 
  /** Accelerometer for Pattern Detection **/
@@ -153,6 +162,47 @@ void loop() {
  else {
     Serial.println("Error - IMU not available");
  }
+
+ /* Magnetometer for Electromagnet Detection*/
+ imu.readMag();
+
+ // plan. check every next value to see if positive or negative shift
+ // if it is, check current time and add to the buffer.
+ // remove all times from buffer that are > 1 sec from current time. 
+ 
+ Serial.print(lastMagX - imu.calcMag(imu.mx));
+ Serial.print(" ");
+ Serial.print(lastMagY - imu.calcMag(imu.my));
+ Serial.print(" ");
+ Serial.print(lastMagZ - imu.calcMag(imu.mz));
+ Serial.println("");
+ 
+ magReadX.push(lastMagX - imu.calcMag(imu.mx));
+ magReadY.push(lastMagY - imu.calcMag(imu.my));
+ magReadZ.push(lastMagZ - imu.calcMag(imu.mz));
+ 
+ lastMagX = imu.calcMag(imu.mx);
+ lastMagY = imu.calcMag(imu.my);
+ lastMagZ = imu.calcMag(imu.mz); 
+
+ for (int i=0; i < magReadX.size(); i++){ 
+      Serial.print(magReadX[i]);
+      Serial.print(", ");
+  }
+  Serial.println("");
+  for (int i=0; i < magReadY.size(); i++){
+      Serial.print(magReadY[i]);
+      Serial.print(", ");
+  }
+  Serial.println("");
+  for (int i=0; i < magReadZ.size(); i++){
+      Serial.print(magReadZ[i]);
+      Serial.print(", ");
+      // if not match with DEFINED_ARR[i] +- ERROR, set var to false & break
+  }
+  Serial.println("");
+ 
+// printMag();
 
  if ((lastPrint + PRINT_SPEED) < millis())
  {
@@ -176,13 +226,13 @@ void loop() {
  /** Active Timer Refresh **/
  // if user engages with exhibits, then timer is refreshed 
  if (active == 1) {
-    Firebase.set(mac+ "/active", 0);
+    Firebase.set("object/" +mac+ "/active", 0);
     loop_iter = 0;
  }
 
  /** Loop Iteration Ctrls **/
- Serial.println(brightness);
+// Serial.println(brightness);
  // wait for 100 milliseconds to see the pattern effect
- delay(100);
+ delay(10);
  loop_iter ++;
 }
