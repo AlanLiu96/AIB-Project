@@ -206,41 +206,42 @@ void tickerLoop() {
  // plan. check every next value to see if positive or negative shift
  // if it is, check current time and add to the buffer.
  // remove all times from buffer that are > 1 sec from current time. 
- 
- Serial.print(lastMagX - imu.calcMag(imu.mx));
- Serial.print(" ");
- Serial.print(lastMagY - imu.calcMag(imu.my));
- Serial.print(" ");
- Serial.print(lastMagZ - imu.calcMag(imu.mz));
- Serial.println("");
- 
- magReadX.push(lastMagX - imu.calcMag(imu.mx));
- magReadY.push(lastMagY - imu.calcMag(imu.my));
- magReadZ.push(lastMagZ - imu.calcMag(imu.mz));
+ int xPeriod;
+ int yPeriod;
+ int zPeriod;
+
+ if (imu.calcMag(imu.mx) * lastMagX < 0){
+  long cur_time = millis();
+  magReadX.push(cur_time);
+  while (cur_time - magReadX.first() < 1000){ // 1000 ms  
+    magReadX.pop();
+  }
+  xPeriod = magReadX.size()/2;
+ }
+ if (imu.calcMag(imu.my) * lastMagY < 0){
+  long cur_time = millis();
+  magReadY.push(cur_time);
+  while (cur_time - magReadY.first() < 1000){ // 1000 ms  
+    magReadY.pop();
+  }
+  yPeriod = magReadY.size()/2;
+ }
+ if (imu.calcMag(imu.mz) * lastMagZ < 0){
+  long cur_time = millis();
+  magReadZ.push(cur_time);
+  while (cur_time - magReadZ.first() < 1000){ // 1000 ms  
+    magReadZ.pop();
+  }
+  zPeriod = magReadZ.size()/2;
+ }
+
+ //TODO: calculate what to do with x,y,z Periods 
  
  lastMagX = imu.calcMag(imu.mx);
  lastMagY = imu.calcMag(imu.my);
  lastMagZ = imu.calcMag(imu.mz); 
 
- for (int i=0; i < magReadX.size(); i++){ 
-      Serial.print(magReadX[i]);
-      Serial.print(", ");
-  }
-  Serial.println("");
-  for (int i=0; i < magReadY.size(); i++){
-      Serial.print(magReadY[i]);
-      Serial.print(", ");
-  }
-  Serial.println("");
-  for (int i=0; i < magReadZ.size(); i++){
-      Serial.print(magReadZ[i]);
-      Serial.print(", ");
-      // if not match with DEFINED_ARR[i] +- ERROR, set var to false & break
-  }
-  Serial.println("");
- 
- // printMag();
-
+ /* Shake Detection */ 
  if ((lastPrint + PRINT_SPEED) < millis())
  {
     lastShake ++;
@@ -252,7 +253,7 @@ void tickerLoop() {
       lastShake = 0; 
       if (accelZDelta > THRESHOLD/TIMES_PER_SEC){
         Serial.println("Shake Activated");
-        active = 1;
+        active = 1; // Send to firebase/ kinect somehow?
         // TODO: Activate behavior on Shake? 
       }
       accelZDelta = 0;
