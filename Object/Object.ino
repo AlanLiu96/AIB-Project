@@ -83,10 +83,14 @@ void setup() {
  Serial.begin(115200);
  delay(500);
 
- // wait for Serial to reconnect after deep sleep
+ // wait for Serial to reconnect after sleep
  while (!Serial) { 
     delay(20);
  } 
+
+ // Sleep Settings
+ WiFi.mode(WIFI_STA);
+ wifi_set_sleep_type(LIGHT_SLEEP_T);
 
  Serial.println();
  Serial.print("MAC: ");
@@ -104,7 +108,8 @@ void setup() {
  delay(500);
  sleepctr ++;
    if (sleepctr >= 20){ // 10 seconds to connect
-    ESP.deepSleep(30e6); // Deepsleeps for 30 seconds if it can't connect
+    delay(30000) // light sleep 30 sec
+    // ESP.deepSleep(30e6); // Deepsleeps for 30 seconds if it can't connect
    }
  }
  Serial.print("connected: ");
@@ -158,7 +163,8 @@ void tickerLoop() {
     /* Deep Sleep Timeout */
     // TODO: How much time do we sleep for?
     if (loop_iter > 600 || (loop_iter == 0 && !active) ){ // 60 seconds of inactivity or just woke up and nothing happened
-      ESP.deepSleep(10e6); // sleep for 10 seconds in deep sleep
+      // ESP.deepSleep(10e6); // sleep for 10 seconds in deep sleep
+      delay(10000);
     }
 
     /* Read Light Pattern */
