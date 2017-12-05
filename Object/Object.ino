@@ -11,7 +11,7 @@ LSM9DS1 imu;
 #include <math.h> // used for breathing 
 
 // Necessary Connections
-// GPIO13 (D0) --> RST [deep sleep] 
+// GPIO16 (D0) --> RST [deep sleep] 
 // LED_PIN --> 
 
 // Set these to run example.
