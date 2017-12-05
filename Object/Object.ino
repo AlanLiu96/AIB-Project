@@ -7,6 +7,8 @@
 #include <SparkFunLSM9DS1.h> // IMU for shake detection and magnetometer
 LSM9DS1 imu;
 #include <Adafruit_NeoPixel.h> // Neopixels for LED
+#include <Ticker.h> // Used to call a function repeatedly (a part of ESP8266 library)
+#include <math.h> // used for breathing 
 
 // Necessary Connections
 // GPIO13 (D0) --> RST [deep sleep] 
@@ -44,10 +46,11 @@ CircularBuffer<float,100> magReadZ;
 #define DECLINATION -8.58 // Declination (degrees) in Boulder, CO.
 
 /** light configurations **/
+#define NUMPIXELS (1)
+#define PERIOD (200)
 const int led = BUILTIN_LED;
 int brightness_init = 255;
 int brightness = 0;    // how bright the LED is
-int fadeAmount = 100;    // how many points to fade the LED by
 
 /* Neopixel LEDs */
 int led_pin = 6;
@@ -60,14 +63,21 @@ Adafruit_NeoPixel strip = Adafruit_NeoPixel(2, led_pin, NEO_GRB + NEO_KHZ800);
 
 // initial pattern
 int pattern = 0; // enum, 0 --> start/neutral, 1 --> fade, 2 --> blink
+int active = 1;
 
 // Wifi setup 
 String mac = WiFi.macAddress();
 int status = WL_IDLE_STATUS;
 
 // iteration variables
+Ticker looper; // used to call loop periodically
 int loop_iter = 0;
 int last_pattern = 0;
+long last_active; // tracks the last time activity occurred.
+
+
+long last_check;
+long integrated_lag = 0;// TODO(alan): I don't understand how this is used
 
 void setup() {
  Serial.begin(115200);
@@ -104,9 +114,9 @@ void setup() {
  Firebase.begin(FIREBASE_HOST, FIREBASE_AUTH);
 
  // run below only if the mac is not already on firebase 
- Firebase.set("object/" + mac + "/pattern", 0); 
+ Firebase.set("object/" + mac + "/pattern", 1); 
  Firebase.set("object/" + mac + "/brightness", brightness_init);
- Firebase.set("object/" + mac + "/active", 1); // turn on initally
+ // Firebase.set("object/" + mac + "/active", 1); // turn on initally
 
  /** IMU Setup **/
  imu.settings.device.commInterface = IMU_MODE_I2C;
@@ -117,44 +127,71 @@ void setup() {
     Serial.println("Failed to communicate with LSM9DS1.");
     delay(100);
  }
+
  /* Neopixel LED Setup */
-//  strip.begin();
-//  strip.show(); // Initialize all pixels to 'off'
-// strip.setPixelColor(0, 0, 0, 0, 255); // white to 255 for led 0 
-// strip.setPixelColor(1, 0, 0, 0, 255); // white to 255 for led 1
+  strip.begin();
+  strip.setBrightness(0);
+  for (int i = 0; i < NUMPIXELS; i++) {
+    // pixels.Color takes RGB values, from 0,0,0 up to 255,255,255
+    strip.setPixelColor(i, strip.Color(0, 0, 0, 255));
+  }
+  strip.show();// Initialize all pixels to 'off'
+
+  looper.attach(0.05, tickerLoop); //https://www.sparkfun.com/news/1842 for ticker description
+  last_check = last_active = millis(); 
 }
 
-void loop() {
- /** Deep Sleep Timeout **/
- // TODO: confirm if we need a deepsleep here based on power consumption, if we do how much time & when? 
-   int active = Firebase.getInt("object/" +mac + "/active");
- if (loop_iter > 600 || (loop_iter == 0 && !active) ){ // 60 seconds of inactivity or just woke up and nothing happened
-    ESP.deepSleep(30e6); // sleep for 30 seconds in deep sleep
+void loop() { // need to keep loop empty for deepsleep 
 }
 
- /** Set Light Pattern **/
- // Read and set pattern from Firebase
- pattern = Firebase.getInt("object/" +mac+ "/pattern");
- if (pattern == 0){ // manual control
-    brightness = Firebase.getInt("object/" +mac + "/brightness");
- } 
- else if (pattern == 1){ // fade
-    brightness = brightness + fadeAmount;
-    // reverse the direction of the fading at the ends of the fade:
-    if (brightness <= 0 || brightness >= 1023) {
-        fadeAmount = -fadeAmount;
-   }
+void tickerLoop() {
+  long start = millis();
+/** Update Vals **/ 
+  if (millis() - last_check > 10000){
+    /* Active Refresh */
+    active = Firebase.getInt("object/" + mac + "/active");
+    // if user engages with exhibits, then timer is refreshed 
+    if (active == 1) {
+      Firebase.set("object/" + mac+ "/active", 0);
+      last_active = millis();
+    }
+    /* Deep Sleep Timeout */
+    // TODO: How much time do we sleep for?
+    if (loop_iter > 600 || (loop_iter == 0 && !active) ){ // 60 seconds of inactivity or just woke up and nothing happened
+      ESP.deepSleep(10e6); // sleep for 10 seconds in deep sleep
+    }
+
+    /* Read Light Pattern */
+    pattern = Firebase.getInt("object/" + mac + "/pattern");
+    if (pattern == 0) // only needed if manual control
+      brightness = Firebase.getInt("object/" + mac + "/brightness");
+
+    Serial.print(active); Serial.print('\t');
+    Serial.print(pattern); Serial.print('\t');
+    Serial.print(brightness); Serial.print('\t');
+    Serial.print(PERIOD); Serial.print('\t');
+    Serial.print('\n');
+
+    Firebase.set("object/" + mac + "/uptime", (millis() / 1000));
+    Firebase.set("object/" + mac + "/lag", (millis() - start));
+    integrated_lag += millis() - start;
+    last_check = millis();
+  }
+
+/** Set Light Pattern **/
+ // set pattern from Firebase
+ if (pattern == 1){ // fade
+    brightness = (exp(sin((millis() - integrated_lag) / ((float)PERIOD) * 2 * PI)) - 0.36787944) * 108.0 * brightness / 255; //http://sean.voisen.org/blog/2011/10/breathing-led-with-arduino/
  } 
  else if (pattern == 2){ // blink
      brightness = brightness < 500 ? 500 : 0;
  }
  // set the brightness of led:
- analogWrite(led, brightness);
-// strip.setBrightness(brightness);
-// strip.show();
+ // analogWrite(led, brightness);
+  strip.setBrightness(brightness);
+  strip.show();
 
-
- /** Accelerometer for Pattern Detection **/
+/** Accelerometer for Pattern Detection **/
  if ( imu.accelAvailable() )
  {
     imu.readAccel();
@@ -163,7 +200,7 @@ void loop() {
     Serial.println("Error - IMU not available");
  }
 
- /* Magnetometer for Electromagnet Detection*/
+/* Magnetometer for Electromagnet Detection*/
  imu.readMag();
 
  // plan. check every next value to see if positive or negative shift
@@ -202,7 +239,7 @@ void loop() {
   }
   Serial.println("");
  
-// printMag();
+ // printMag();
 
  if ((lastPrint + PRINT_SPEED) < millis())
  {
@@ -223,16 +260,8 @@ void loop() {
     lastPrint = millis(); // Update lastPrint time
  }
 
- /** Active Timer Refresh **/
- // if user engages with exhibits, then timer is refreshed 
- if (active == 1) {
-    Firebase.set("object/" +mac+ "/active", 0);
-    loop_iter = 0;
- }
-
- /** Loop Iteration Ctrls **/
-// Serial.println(brightness);
- // wait for 100 milliseconds to see the pattern effect
+/** Loop Iteration Ctrls **/
+ // Serial.println(brightness);
+ // wait for 10 milliseconds to see the pattern effect
  delay(10);
- loop_iter ++;
 }
