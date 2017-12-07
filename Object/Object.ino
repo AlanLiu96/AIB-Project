@@ -7,9 +7,8 @@
 #include <SparkFunLSM9DS1.h> // IMU for shake detection and magnetometer
 LSM9DS1 imu;
 #include <Adafruit_NeoPixel.h> // Neopixels for LED
-#include <Ticker.h> // Used to call a function repeatedly (a part of ESP8266 library)
 #include <math.h> // used for breathing 
-
+  
 // Necessary Connections
 // GPIO16 (D0) --> RST [deep sleep] 
 // LED_PIN --> 
@@ -38,9 +37,12 @@ float accelZDelta = 0;
 float lastMagX = 0; //in Gauss
 float lastMagY = 0;
 float lastMagZ = 0;
-CircularBuffer<float,100> magReadX; // the derivative or change in last 100 reads (last second)
-CircularBuffer<float,100> magReadY;
-CircularBuffer<float,100> magReadZ;
+float lastMagXChange = 0;
+float lastMagYChange = 0;
+float lastMagZChange = 0;
+CircularBuffer<long,100> magReadX; // the derivative or change in last 100 reads (last second)
+CircularBuffer<long,100> magReadY;
+CircularBuffer<long,100> magReadZ;
 
 // http://www.ngdc.noaa.gov/geomag-web/#declination
 #define DECLINATION -8.58 // Declination (degrees) in Boulder, CO.
@@ -70,7 +72,7 @@ String mac = WiFi.macAddress();
 int status = WL_IDLE_STATUS;
 
 // iteration variables
-Ticker looper; // used to call loop periodically
+//Ticker looper; // used to call loop periodically
 int loop_iter = 0;
 int last_pattern = 0;
 long last_active; // tracks the last time activity occurred.
@@ -79,18 +81,21 @@ long last_active; // tracks the last time activity occurred.
 long last_check;
 long integrated_lag = 0;// TODO(alan): I don't understand how this is used
 
+// Return RSSI or 0 if target SSID not found
+int32_t getRSSI(String target_ssid) {
+  byte available_networks = WiFi.scanNetworks();
+
+  for (int network = 0; network < available_networks; network++) {
+    if (WiFi.SSID(network).equals( target_ssid)) {
+      return WiFi.RSSI(network);
+    }
+  }
+  return 0;
+}
+
 void setup() {
  Serial.begin(115200);
  delay(500);
-
- // wait for Serial to reconnect after sleep
- while (!Serial) { 
-    delay(20);
- } 
-
- // Sleep Settings
- WiFi.mode(WIFI_STA);
- wifi_set_sleep_type(LIGHT_SLEEP_T);
 
  Serial.println();
  Serial.print("MAC: ");
@@ -102,15 +107,9 @@ void setup() {
  /** Wifi Setup **/
  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
  Serial.print("connecting");
- int sleepctr = 0;
  while (WiFi.status() != WL_CONNECTED) {
  Serial.print(".");
  delay(500);
- sleepctr ++;
-   if (sleepctr >= 20){ // 10 seconds to connect
-    delay(30000) // light sleep 30 sec
-    // ESP.deepSleep(30e6); // Deepsleeps for 30 seconds if it can't connect
-   }
  }
  Serial.print("connected: ");
  Serial.println(WiFi.localIP());
@@ -149,22 +148,16 @@ void setup() {
 void loop() {
     long start = millis();
 /** Update Vals **/ 
-  if (millis() - last_check > 10000){
-    /* Active Refresh */
+  if (millis() - last_check > 1000){
+  /* Active Refresh */
     active = Firebase.getInt("object/" + mac + "/active");
     // if user engages with exhibits, then timer is refreshed 
     if (active == 1) {
       Firebase.set("object/" + mac+ "/active", 0);
       last_active = millis();
     }
-    /* Deep Sleep Timeout */
-    // TODO: How much time do we sleep for?
-    if (loop_iter > 600 || (loop_iter == 0 && !active) ){ // 60 seconds of inactivity or just woke up and nothing happened
-      // ESP.deepSleep(10e6); // sleep for 10 seconds in deep sleep
-      delay(10000);
-    }
 
-    /* Read Light Pattern */
+  /* Read Light Pattern */
     pattern = Firebase.getInt("object/" + mac + "/pattern");
     if (pattern == 0) // only needed if manual control
       brightness = Firebase.getInt("object/" + mac + "/brightness");
@@ -179,6 +172,12 @@ void loop() {
     Firebase.set("object/" + mac + "/lag", (millis() - start));
     integrated_lag += millis() - start;
     last_check = millis();
+
+  /* Wifi Signal Detection */
+    long rssi = getRSSI("FuturePod");
+    if (rssi > -45){
+      Serial.print("location: FuturePod!");
+    }
   }
 
 /** Set Light Pattern **/
@@ -209,7 +208,7 @@ void loop() {
  // plan. check every next value to see if positive or negative shift
  // if it is, check current time and add to the buffer.
  // remove all times from buffer that are > 1 sec from current time. 
- int xPeriod;
+ int xPeriod; //frequency
  int yPeriod;
  int zPeriod;
 
@@ -218,14 +217,21 @@ void loop() {
   magReadX.push(cur_time);
   while (cur_time - magReadX.first() < 1000){ // 1000 ms  
     magReadX.pop();
+    if (magReadX.size() == 0){
+      break;
+    }
   }
   xPeriod = magReadX.size()/2;
+  
  }
  if (imu.calcMag(imu.my) * lastMagY < 0){
   long cur_time = millis();
   magReadY.push(cur_time);
   while (cur_time - magReadY.first() < 1000){ // 1000 ms  
     magReadY.pop();
+    if (magReadY.size() == 0){
+      break;
+    }
   }
   yPeriod = magReadY.size()/2;
  }
@@ -234,12 +240,27 @@ void loop() {
   magReadZ.push(cur_time);
   while (cur_time - magReadZ.first() < 1000){ // 1000 ms  
     magReadZ.pop();
+    if (magReadZ.size() == 0){
+      break;
+    }
   }
   zPeriod = magReadZ.size()/2;
  }
+    for (int i = 0; i < magReadZ.size(); i++){
+      Serial.print(magReadZ[i]);
+      Serial.print(' ');
+    }
+    Serial.println();
+    Serial.print(imu.calcMag(imu.mx)); Serial.print('\t');
+    Serial.print(imu.calcMag(imu.my)); Serial.print('\t');
+    Serial.print(imu.calcMag(imu.mz)); Serial.print('\t');
+    Serial.println();
+    
 
  //TODO: calculate what to do with x,y,z Periods 
- 
+ lastMagXChange = imu.calcMag(imu.mx) - lastMagX;
+ lastMagYChange = imu.calcMag(imu.my) - lastMagY;
+ lastMagZChange = imu.calcMag(imu.mz) - lastMagZ;
  lastMagX = imu.calcMag(imu.mx);
  lastMagY = imu.calcMag(imu.my);
  lastMagZ = imu.calcMag(imu.mz); 
@@ -269,4 +290,3 @@ void loop() {
  // wait for 10 milliseconds to see the pattern effect
  delay(10);
 }
-
