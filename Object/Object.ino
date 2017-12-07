@@ -142,15 +142,12 @@ void setup() {
   }
   strip.show();// Initialize all pixels to 'off'
 
-  looper.attach(0.05, tickerLoop); //https://www.sparkfun.com/news/1842 for ticker description
+  // looper.attach(0.05, tickerLoop); //https://www.sparkfun.com/news/1842 for ticker description
   last_check = last_active = millis(); 
 }
 
-void loop() { // need to keep loop empty for deepsleep 
-}
-
-void tickerLoop() {
-  long start = millis();
+void loop() {
+    long start = millis();
 /** Update Vals **/ 
   if (millis() - last_check > 10000){
     /* Active Refresh */
@@ -272,3 +269,4 @@ void tickerLoop() {
  // wait for 10 milliseconds to see the pattern effect
  delay(10);
 }
+
