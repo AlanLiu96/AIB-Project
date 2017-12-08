@@ -173,11 +173,16 @@ void loop() {
     integrated_lag += millis() - start;
     last_check = millis();
 
+    String location = "unknown";
   /* Wifi Signal Detection */
     long rssi = getRSSI("FuturePod");
     if (rssi > -45){
+      location = "FuturePod";
       Serial.print("location: FuturePod!");
     }
+
+    Firebase.set("object/"+ mac + "/location", location);
+    Firebase.set("object/"+ mac + "/visitedLocations/"+ location, true);
   }
 
 /** Set Light Pattern **/
