@@ -213,59 +213,36 @@ void loop() {
  // plan. check every next value to see if positive or negative shift
  // if it is, check current time and add to the buffer.
  // remove all times from buffer that are > 1 sec from current time. 
- int xPeriod; //frequency
- int yPeriod;
- int zPeriod;
+ int xFrequency = 0; //frequency
+ int yFrequency = 0;
+ int zFrequency = 0;
 
  if (imu.calcMag(imu.mx) * lastMagX < 0){
   long cur_time = millis();
   magReadX.push(cur_time);
-  while (cur_time - magReadX.first() < 1000){ // 1000 ms  
-    magReadX.pop();
-    if (magReadX.size() == 0){
-      break;
-    }
+  if (cur_time - magReadX.first() < 1000){ // 1000 ms  
+    xFrequency = magReadX.size()/2;
+    magReadX.empty();
   }
-  xPeriod = magReadX.size()/2;
-  
  }
  if (imu.calcMag(imu.my) * lastMagY < 0){
   long cur_time = millis();
   magReadY.push(cur_time);
-  while (cur_time - magReadY.first() < 1000){ // 1000 ms  
-    magReadY.pop();
-    if (magReadY.size() == 0){
-      break;
-    }
+  if (cur_time - magReadY.first() < 1000){ // 1000 ms  
+    yFrequency = magReadY.size()/2;
+    magReadY.empty();
   }
-  yPeriod = magReadY.size()/2;
  }
  if (imu.calcMag(imu.mz) * lastMagZ < 0){
   long cur_time = millis();
   magReadZ.push(cur_time);
   while (cur_time - magReadZ.first() < 1000){ // 1000 ms  
-    magReadZ.pop();
-    if (magReadZ.size() == 0){
-      break;
-    }
+    zFrequency = magReadZ.size()/2;
+    magReadZ.empty();
   }
-  zPeriod = magReadZ.size()/2;
  }
-    for (int i = 0; i < magReadZ.size(); i++){
-      Serial.print(magReadZ[i]);
-      Serial.print(' ');
-    }
-    Serial.println();
-    Serial.print(imu.calcMag(imu.mx)); Serial.print('\t');
-    Serial.print(imu.calcMag(imu.my)); Serial.print('\t');
-    Serial.print(imu.calcMag(imu.mz)); Serial.print('\t');
-    Serial.println();
-    
-
- //TODO: calculate what to do with x,y,z Periods 
- lastMagXChange = imu.calcMag(imu.mx) - lastMagX;
- lastMagYChange = imu.calcMag(imu.my) - lastMagY;
- lastMagZChange = imu.calcMag(imu.mz) - lastMagZ;
+ 
+ //TODO: calculate what to do with x,y,z Frequencies
  lastMagX = imu.calcMag(imu.mx);
  lastMagY = imu.calcMag(imu.my);
  lastMagZ = imu.calcMag(imu.mz); 
