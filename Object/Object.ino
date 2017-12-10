@@ -176,9 +176,15 @@ void loop() {
     String location = "unknown";
   /* Wifi Signal Detection */
     long rssi = getRSSI("FuturePod");
-    if (rssi > -45){
+    if (rssi > -45 && rssi != 0){
       location = "FuturePod";
       Serial.print("location: FuturePod!");
+    }
+
+    rssi = getRSSI("Mirror");
+    if (rssi > -40 && rssi != 0){
+      location = "Mirror";
+      Serial.print("location: Mirror!");
     }
 
     Firebase.set("object/"+ mac + "/location", location);
@@ -241,7 +247,7 @@ void loop() {
     magReadZ.empty();
   }
  }
- 
+
  //TODO: calculate what to do with x,y,z Frequencies
  lastMagX = imu.calcMag(imu.mx);
  lastMagY = imu.calcMag(imu.my);
