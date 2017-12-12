@@ -126,7 +126,7 @@ void setup() {
  imu.settings.device.commInterface = IMU_MODE_I2C;
  imu.settings.device.mAddress = LSM9DS1_M;
  imu.settings.device.agAddress = LSM9DS1_AG;
- if (!imu.begin()) // commented out for non-imu demo
+ if (!imu.begin()) 
  {
     Serial.println("Failed to communicate with LSM9DS1. Continuing anyway.");
     delay(100);
@@ -194,13 +194,16 @@ void loop() {
 /** Set Light Pattern **/
  // set pattern from Firebase
  if (pattern == 1){ // fade
-    brightness = (exp(sin((millis() - integrated_lag) / ((float)PERIOD) * 2 * PI)) - 0.36787944) * 108.0 * brightness / 255; //http://sean.voisen.org/blog/2011/10/breathing-led-with-arduino/
+    brightness = (exp(sin((millis() - integrated_lag) / ((float)PERIOD) * 2 * PI)) - 0.36787944) * 108.0; //http://sean.voisen.org/blog/2011/10/breathing-led-with-arduino/
  } 
  else if (pattern == 2){ // blink
      brightness = brightness < 255 ? 255 : 0;
  }
  // set the brightness of led:
  // analogWrite(led, brightness);
+   for (int i = 0; i < NUMPIXELS; i++){
+    strip.setPixelColor(i, strip.Color(0, 0,0, 255));
+   }
   strip.setBrightness(brightness);
   strip.show();
 
@@ -214,6 +217,7 @@ void loop() {
  }
 
 /* Magnetometer for Electromagnet Detection*/
+if ( imu.magAvailable() ){
  imu.readMag();
 
  // plan. check every next value to see if positive or negative shift
@@ -253,7 +257,7 @@ void loop() {
  lastMagX = imu.calcMag(imu.mx-2.5);
  lastMagY = imu.calcMag(imu.my-2.5);
  lastMagZ = imu.calcMag(imu.mz-2.5); 
-
+}
  /* Shake Detection */ 
  if ((lastPrint + PRINT_SPEED) < millis())
  {
