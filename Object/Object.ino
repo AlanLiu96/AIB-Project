@@ -48,7 +48,7 @@ CircularBuffer<long,100> magReadZ;
 #define DECLINATION -8.58 // Declination (degrees) in Boulder, CO.
 
 /** light configurations **/
-#define NUMPIXELS (1)
+#define NUMPIXELS (2)
 #define PERIOD (200)
 const int led = BUILTIN_LED;
 int brightness_init = 255;
@@ -126,9 +126,9 @@ void setup() {
  imu.settings.device.commInterface = IMU_MODE_I2C;
  imu.settings.device.mAddress = LSM9DS1_M;
  imu.settings.device.agAddress = LSM9DS1_AG;
- while (!imu.begin()) // commented out for non-imu demo
+ if (!imu.begin()) // commented out for non-imu demo
  {
-    Serial.println("Failed to communicate with LSM9DS1.");
+    Serial.println("Failed to communicate with LSM9DS1. Continuing anyway.");
     delay(100);
  }
 
@@ -187,7 +187,7 @@ void loop() {
       Serial.print("location: Mirror!");
     }
 
-    Firebase.set("object/"+ mac + "/location", location);
+    Firebase.setString("object/"+ mac + "/location", location);
     Firebase.set("object/"+ mac + "/visitedLocations/"+ location, true);
   }
 
@@ -197,7 +197,7 @@ void loop() {
     brightness = (exp(sin((millis() - integrated_lag) / ((float)PERIOD) * 2 * PI)) - 0.36787944) * 108.0 * brightness / 255; //http://sean.voisen.org/blog/2011/10/breathing-led-with-arduino/
  } 
  else if (pattern == 2){ // blink
-     brightness = brightness < 500 ? 500 : 0;
+     brightness = brightness < 255 ? 255 : 0;
  }
  // set the brightness of led:
  // analogWrite(led, brightness);
@@ -223,35 +223,36 @@ void loop() {
  int yFrequency = 0;
  int zFrequency = 0;
 
- if (imu.calcMag(imu.mx) * lastMagX < 0){
+ if (imu.calcMag(imu.mx-2.5) * lastMagX < 0){
   long cur_time = millis();
   magReadX.push(cur_time);
   if (cur_time - magReadX.first() < 1000){ // 1000 ms  
     xFrequency = magReadX.size()/2;
-    magReadX.empty();
+    magReadX.clear();
   }
  }
- if (imu.calcMag(imu.my) * lastMagY < 0){
+ if (imu.calcMag(imu.my-2.5) * lastMagY < 0){
   long cur_time = millis();
   magReadY.push(cur_time);
   if (cur_time - magReadY.first() < 1000){ // 1000 ms  
     yFrequency = magReadY.size()/2;
-    magReadY.empty();
+    magReadY.clear();
   }
  }
- if (imu.calcMag(imu.mz) * lastMagZ < 0){
+ if (imu.calcMag(imu.mz-2.5) * lastMagZ < 0){
   long cur_time = millis();
   magReadZ.push(cur_time);
   while (cur_time - magReadZ.first() < 1000){ // 1000 ms  
     zFrequency = magReadZ.size()/2;
-    magReadZ.empty();
+    magReadZ.clear();
   }
  }
 
  //TODO: calculate what to do with x,y,z Frequencies
- lastMagX = imu.calcMag(imu.mx);
- lastMagY = imu.calcMag(imu.my);
- lastMagZ = imu.calcMag(imu.mz); 
+ // Subtracted 2.5 since we can only output 0-5v on electromagnet
+ lastMagX = imu.calcMag(imu.mx-2.5);
+ lastMagY = imu.calcMag(imu.my-2.5);
+ lastMagZ = imu.calcMag(imu.mz-2.5); 
 
  /* Shake Detection */ 
  if ((lastPrint + PRINT_SPEED) < millis())
