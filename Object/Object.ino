@@ -49,7 +49,7 @@ CircularBuffer<long,100> magReadZ;
 
 /** light configurations **/
 #define NUMPIXELS (2)
-#define PERIOD (200)
+#define PERIOD (2000)
 const int led = BUILTIN_LED;
 int brightness_init = 255;
 int brightness = 0;    // how bright the LED is
@@ -76,6 +76,7 @@ int status = WL_IDLE_STATUS;
 int loop_iter = 0;
 int last_pattern = 0;
 long last_active; // tracks the last time activity occurred.
+long last_blink; // tracks the last time it blinked
 
 
 long last_check;
@@ -141,63 +142,66 @@ void setup() {
   }
   strip.show();// Initialize all pixels to 'off'
 
-  // looper.attach(0.05, tickerLoop); //https://www.sparkfun.com/news/1842 for ticker description
-  last_check = last_active = millis(); 
+  last_check = last_active = last_blink = millis(); 
 }
 
 void loop() {
     long start = millis();
 /** Update Vals **/ 
-  if (millis() - last_check > 1000){
+  if (millis() - last_check > 3000){
   /* Active Refresh */
-    active = Firebase.getInt("object/" + mac + "/active");
+//    active = Firebase.getInt("object/" + mac + "/active");
     // if user engages with exhibits, then timer is refreshed 
-    if (active == 1) {
-      Firebase.set("object/" + mac+ "/active", 0);
-      last_active = millis();
-    }
+//    if (active == 1) { // comment out due to removal of deep sleep
+//      Firebase.set("object/" + mac+ "/active", 0);
+//      last_active = millis();
+//    }
 
   /* Read Light Pattern */
     pattern = Firebase.getInt("object/" + mac + "/pattern");
-    if (pattern == 0) // only needed if manual control
-      brightness = Firebase.getInt("object/" + mac + "/brightness");
+    if (pattern == 0) {// only needed if manual control
+      brightness = Firebase.getInt("object/" + mac + "/brightness");}
 
-    Serial.print(active); Serial.print('\t');
-    Serial.print(pattern); Serial.print('\t');
-    Serial.print(brightness); Serial.print('\t');
-    Serial.print(PERIOD); Serial.print('\t');
-    Serial.print('\n');
+//    Serial.print(active); Serial.print('\t');
+//    Serial.print(pattern); Serial.print('\t');
+//    Serial.print(brightness); Serial.print('\t');
+//    Serial.print(PERIOD); Serial.print('\t');
+//    Serial.print('\n');
 
-    Firebase.set("object/" + mac + "/uptime", (millis() / 1000));
-    Firebase.set("object/" + mac + "/lag", (millis() - start));
-    integrated_lag += millis() - start;
+//    Firebase.set("object/" + mac + "/uptime", (millis() / 1000));
     last_check = millis();
+    Firebase.set("object/" + mac + "/lag", (last_check - start));
+    integrated_lag += last_check - start;
+    
 
-    String location = "unknown";
+//    String location = "unknown";
   /* Wifi Signal Detection */
-    long rssi = getRSSI("FuturePod");
-    if (rssi > -45 && rssi != 0){
-      location = "FuturePod";
-      Serial.print("location: FuturePod!");
-    }
+//    long rssi = getRSSI("FuturePod");
+//    if (rssi > -45 && rssi != 0){
+//      location = "FuturePod";
+//      Serial.print("location: FuturePod!");
+//    }
+//
+//    rssi = getRSSI("Mirror");
+//    if (rssi > -40 && rssi != 0){
+//      location = "Mirror";
+//      Serial.print("location: Mirror!");
+//    }
 
-    rssi = getRSSI("Mirror");
-    if (rssi > -40 && rssi != 0){
-      location = "Mirror";
-      Serial.print("location: Mirror!");
-    }
-
-    Firebase.setString("object/"+ mac + "/location", location);
-    Firebase.set("object/"+ mac + "/visitedLocations/"+ location, true);
+//    Firebase.setString("object/"+ mac + "/location", location);
+//    Firebase.set("object/"+ mac + "/visitedLocations/"+ location, true);
   }
 
 /** Set Light Pattern **/
- // set pattern from Firebase
+ // set pattern from Firebase 
  if (pattern == 1){ // fade
     brightness = (exp(sin((millis() - integrated_lag) / ((float)PERIOD) * 2 * PI)) - 0.36787944) * 108.0; //http://sean.voisen.org/blog/2011/10/breathing-led-with-arduino/
  } 
  else if (pattern == 2){ // blink
-     brightness = brightness < 255 ? 255 : 0;
+    if (millis() - last_blink > 1000){
+      brightness = brightness < 255 ? 255 : 0;
+      last_blink = millis();
+    }
  }
  // set the brightness of led:
  // analogWrite(led, brightness);
@@ -279,7 +283,7 @@ if ( imu.magAvailable() ){
  }
 
 /** Loop Iteration Ctrls **/
- // Serial.println(brightness);
+//  Serial.println(brightness);
  // wait for 10 milliseconds to see the pattern effect
  delay(10);
 }
