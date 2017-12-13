@@ -256,6 +256,12 @@ if ( imu.magAvailable() ){
   }
  }
 
+   Serial.print(xFrequency); Serial.print('\t');
+   Serial.print(yFrequency); Serial.print('\t');
+   Serial.print(zFrequency); Serial.print('\t');
+   Serial.print('\n');
+
+
  //TODO: calculate what to do with x,y,z Frequencies
  // Subtracted 2.5 since we can only output 0-5v on electromagnet
  lastMagX = imu.calcMag(imu.mx-2.5);
